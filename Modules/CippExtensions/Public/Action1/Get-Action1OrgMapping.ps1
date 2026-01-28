@@ -35,22 +35,32 @@ function Get-Action1OrgMapping {
             }
         }
         
-        # Get Action1 configuration
-        $Configuration = Get-Action1Configuration
+        # Get Action1 configuration from CIPP settings
+        $Table = Get-CIPPTable -TableName Extensionsconfig
+        $Configuration = ((Get-AzDataTableEntity @Table).config | ConvertFrom-Json -ErrorAction Stop)
         
-        if (-not $Configuration -or -not $Configuration.Enabled) {
-            $Action1Orgs = @(@{ 
+        # Check if Action1 is enabled
+        $Action1Enabled = [bool]$Configuration.'Action1.Enabled'
+        $Action1ClientID = $Configuration.'Action1.ClientID'
+        $Action1ClientSecret = $Configuration.'Action1.APIKey'
+        $Action1OrgID = $Configuration.'Action1.OrgID'
+        
+        if (-not $Action1Enabled -or [string]::IsNullOrEmpty($Action1ClientID)) {
+            $Action1Orgs = @([PSCustomObject]@{ 
                 name  = 'Action1 integration not configured. Please configure API credentials first.'
                 value = '-1' 
             })
         } else {
             try {
-                # Get Action1 token
-                $Token = Get-Action1Token -Configuration $Configuration
+                # Get Action1 token using credentials
+                $Token = Get-Action1Token -ClientID $Action1ClientID -ClientSecret $Action1ClientSecret
                 
-                # Get organizations from Action1
-                # Note: Action1 API returns organizations the API key has access to
-                $OrgResponse = Invoke-Action1Request -Endpoint 'organizations' -Method 'GET' -Configuration $Configuration
+                if (-not $Token) {
+                    throw "Failed to obtain Action1 access token"
+                }
+                
+                # Get organizations from Action1 API
+                $OrgResponse = Invoke-Action1Request -Endpoint '/organizations' -Method 'GET' -Token $Token
                 
                 if ($OrgResponse -and $OrgResponse.items) {
                     $Action1Orgs = $OrgResponse.items | ForEach-Object {
@@ -59,11 +69,22 @@ function Get-Action1OrgMapping {
                             value = $_.id
                         }
                     }
-                } else {
-                    # If no orgs returned, use the configured OrgID as the default
+                } elseif ($OrgResponse -and $OrgResponse.id) {
+                    # Single org response
                     $Action1Orgs = @([PSCustomObject]@{
-                        name  = "Default Organization ($($Configuration.OrgID))"
-                        value = $Configuration.OrgID
+                        name  = $OrgResponse.name
+                        value = $OrgResponse.id
+                    })
+                } elseif (-not [string]::IsNullOrEmpty($Action1OrgID)) {
+                    # Fall back to configured OrgID if no orgs returned from API
+                    $Action1Orgs = @([PSCustomObject]@{
+                        name  = "Configured Organization ($Action1OrgID)"
+                        value = $Action1OrgID
+                    })
+                } else {
+                    $Action1Orgs = @([PSCustomObject]@{ 
+                        name  = 'No organizations found in Action1'
+                        value = '-1' 
                     })
                 }
             } catch {
@@ -76,13 +97,13 @@ function Get-Action1OrgMapping {
                 Write-LogMessage -API 'Action1OrgMapping' -tenant 'CIPP' -message "Failed to get Action1 organizations: $ErrorMessage" -Sev 'Warning'
                 
                 # Fall back to configured OrgID if API call fails
-                if ($Configuration.OrgID) {
+                if (-not [string]::IsNullOrEmpty($Action1OrgID)) {
                     $Action1Orgs = @([PSCustomObject]@{
-                        name  = "Configured Organization ($($Configuration.OrgID))"
-                        value = $Configuration.OrgID
+                        name  = "Configured Organization ($Action1OrgID)"
+                        value = $Action1OrgID
                     })
                 } else {
-                    $Action1Orgs = @(@{ 
+                    $Action1Orgs = @([PSCustomObject]@{ 
                         name  = "Could not get Action1 Orgs: $ErrorMessage"
                         value = '-1' 
                     })
@@ -102,7 +123,7 @@ function Get-Action1OrgMapping {
         Write-LogMessage -API 'Action1OrgMapping' -tenant 'CIPP' -message "Error in Get-Action1OrgMapping: $ErrorMessage" -Sev 'Error'
         
         return [PSCustomObject]@{
-            Companies = @(@{ name = "Error: $ErrorMessage"; value = '-1' })
+            Companies = @([PSCustomObject]@{ name = "Error: $ErrorMessage"; value = '-1' })
             Mappings  = @()
         }
     }

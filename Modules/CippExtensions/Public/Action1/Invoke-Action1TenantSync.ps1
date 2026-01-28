@@ -59,11 +59,23 @@ function Invoke-Action1TenantSync {
         
         $Action1OrgId = $MappedTenant.IntegrationId
         
-        # Get Action1 configuration
-        $Configuration = Get-Action1Configuration
+        # Get Action1 configuration from CIPP settings
+        $Table = Get-CIPPTable -TableName Extensionsconfig
+        $Configuration = ((Get-AzDataTableEntity @Table).config | ConvertFrom-Json -ErrorAction Stop)
         
-        if (-not $Configuration -or -not $Configuration.Enabled) {
+        $Action1Enabled = [bool]$Configuration.'Action1.Enabled'
+        $Action1ClientID = $Configuration.'Action1.ClientID'
+        $Action1ClientSecret = $Configuration.'Action1.APIKey'
+        
+        if (-not $Action1Enabled -or [string]::IsNullOrEmpty($Action1ClientID)) {
             throw "Action1 integration is not configured or enabled"
+        }
+        
+        # Get Action1 token
+        $Token = Get-Action1Token -ClientID $Action1ClientID -ClientSecret $Action1ClientSecret
+        
+        if (-not $Token) {
+            throw "Failed to obtain Action1 access token"
         }
         
         # Initialize cache tables
@@ -73,10 +85,20 @@ function Invoke-Action1TenantSync {
         
         # Fetch Action1 Endpoints
         Write-Information "Fetching Action1 endpoints for org: $Action1OrgId"
+        $Endpoints = $null
         try {
-            $Endpoints = Get-Action1Endpoints -OrgId $Action1OrgId -Configuration $Configuration
+            $Endpoints = Get-Action1Endpoints -OrgID $Action1OrgId -Token $Token
             
             if ($Endpoints) {
+                # Handle both array and single-item responses
+                if ($Endpoints -isnot [array]) {
+                    if ($Endpoints.items) {
+                        $Endpoints = $Endpoints.items
+                    } else {
+                        $Endpoints = @($Endpoints)
+                    }
+                }
+                
                 # Clear old cached data for this tenant
                 $OldEndpoints = Get-CIPPAzDataTableEntity @EndpointsTable -Filter "PartitionKey eq '$($Customer.customerId)'"
                 if ($OldEndpoints) {
@@ -101,10 +123,20 @@ function Invoke-Action1TenantSync {
         
         # Fetch Action1 Vulnerabilities
         Write-Information "Fetching Action1 vulnerabilities for org: $Action1OrgId"
+        $Vulnerabilities = $null
         try {
-            $Vulnerabilities = Get-Action1Vulnerabilities -OrgId $Action1OrgId -Configuration $Configuration
+            $Vulnerabilities = Get-Action1Vulnerabilities -OrgID $Action1OrgId -Token $Token
             
             if ($Vulnerabilities) {
+                # Handle both array and single-item responses
+                if ($Vulnerabilities -isnot [array]) {
+                    if ($Vulnerabilities.items) {
+                        $Vulnerabilities = $Vulnerabilities.items
+                    } else {
+                        $Vulnerabilities = @($Vulnerabilities)
+                    }
+                }
+                
                 # Clear old cached data
                 $OldVulns = Get-CIPPAzDataTableEntity @VulnerabilitiesTable -Filter "PartitionKey eq '$($Customer.customerId)'"
                 if ($OldVulns) {
@@ -113,9 +145,10 @@ function Invoke-Action1TenantSync {
                 
                 # Cache new vulnerability data
                 foreach ($Vuln in $Vulnerabilities) {
+                    $VulnId = if ($Vuln.cve_id) { $Vuln.cve_id } else { $Vuln.id }
                     $VulnEntity = @{
                         PartitionKey = $Customer.customerId
-                        RowKey       = $Vuln.cve_id -replace '[^a-zA-Z0-9-]', '_'
+                        RowKey       = ($VulnId -replace '[^a-zA-Z0-9-]', '_')
                         Data         = ($Vuln | ConvertTo-Json -Depth 10 -Compress)
                     }
                     Add-CIPPAzDataTableEntity @VulnerabilitiesTable -Entity $VulnEntity -Force
@@ -129,10 +162,20 @@ function Invoke-Action1TenantSync {
         
         # Fetch Action1 Missing Updates
         Write-Information "Fetching Action1 missing updates for org: $Action1OrgId"
+        $MissingUpdates = $null
         try {
-            $MissingUpdates = Get-Action1MissingUpdates -OrgId $Action1OrgId -Configuration $Configuration
+            $MissingUpdates = Get-Action1MissingUpdates -OrgID $Action1OrgId -Token $Token
             
             if ($MissingUpdates) {
+                # Handle both array and single-item responses
+                if ($MissingUpdates -isnot [array]) {
+                    if ($MissingUpdates.items) {
+                        $MissingUpdates = $MissingUpdates.items
+                    } else {
+                        $MissingUpdates = @($MissingUpdates)
+                    }
+                }
+                
                 # Clear old cached data
                 $OldUpdates = Get-CIPPAzDataTableEntity @MissingUpdatesTable -Filter "PartitionKey eq '$($Customer.customerId)'"
                 if ($OldUpdates) {
@@ -158,23 +201,23 @@ function Invoke-Action1TenantSync {
         }
         
         # Calculate summary stats
-        $EndpointCount = ($Endpoints | Measure-Object).Count
-        $OnlineCount = ($Endpoints | Where-Object { $_.status -eq 'online' } | Measure-Object).Count
-        $VulnCount = ($Vulnerabilities | Measure-Object).Count
-        $CriticalVulnCount = ($Vulnerabilities | Where-Object { $_.severity -eq 'critical' } | Measure-Object).Count
-        $UpdateCount = ($MissingUpdates | Measure-Object).Count
+        $EndpointCount = if ($Endpoints) { ($Endpoints | Measure-Object).Count } else { 0 }
+        $OnlineCount = if ($Endpoints) { ($Endpoints | Where-Object { $_.status -eq 'online' } | Measure-Object).Count } else { 0 }
+        $VulnCount = if ($Vulnerabilities) { ($Vulnerabilities | Measure-Object).Count } else { 0 }
+        $CriticalVulnCount = if ($Vulnerabilities) { ($Vulnerabilities | Where-Object { $_.severity -eq 'critical' } | Measure-Object).Count } else { 0 }
+        $UpdateCount = if ($MissingUpdates) { ($MissingUpdates | Measure-Object).Count } else { 0 }
         
         # Store summary for quick access
         $SummaryTable = Get-CIPPTable -TableName CacheAction1Summary
         $SummaryEntity = @{
-            PartitionKey       = $Customer.customerId
-            RowKey             = 'Summary'
-            TotalEndpoints     = $EndpointCount
-            OnlineEndpoints    = $OnlineCount
-            TotalVulnerabilities = $VulnCount
+            PartitionKey            = $Customer.customerId
+            RowKey                  = 'Summary'
+            TotalEndpoints          = $EndpointCount
+            OnlineEndpoints         = $OnlineCount
+            TotalVulnerabilities    = $VulnCount
             CriticalVulnerabilities = $CriticalVulnCount
-            MissingUpdates     = $UpdateCount
-            LastSync           = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ss.fffZ')
+            MissingUpdates          = $UpdateCount
+            LastSync                = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ss.fffZ')
         }
         Add-CIPPAzDataTableEntity @SummaryTable -Entity $SummaryEntity -Force
         
@@ -189,12 +232,12 @@ function Invoke-Action1TenantSync {
         Write-LogMessage -tenant $Customer.defaultDomainName -API 'Action1Sync' -message "Completed Action1 Sync for $($Customer.displayName). Endpoints: $EndpointCount, Vulnerabilities: $VulnCount, Missing Updates: $UpdateCount. Duration: $Duration seconds" -Sev 'Info'
         
         return @{
-            Success    = $true
-            Tenant     = $Customer.displayName
-            Endpoints  = $EndpointCount
+            Success         = $true
+            Tenant          = $Customer.displayName
+            Endpoints       = $EndpointCount
             Vulnerabilities = $VulnCount
-            MissingUpdates = $UpdateCount
-            Duration   = $Duration
+            MissingUpdates  = $UpdateCount
+            Duration        = $Duration
         }
         
     } catch {
