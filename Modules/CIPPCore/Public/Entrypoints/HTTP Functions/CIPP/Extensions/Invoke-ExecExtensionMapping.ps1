@@ -34,6 +34,9 @@ Function Invoke-ExecExtensionMapping {
       'Sherweb' {
         $Result = Get-SherwebMapping -CIPPMapping $Table
       }
+      'Action1' {
+        $Result = Get-Action1OrgMapping
+      }
       'HaloPSAFields' {
         $TicketTypes = Get-HaloTicketType
         $Outcomes = Get-HaloTicketOutcome
@@ -74,6 +77,10 @@ Function Invoke-ExecExtensionMapping {
         }
         'HuduFields' {
           $Result = Set-ExtensionFieldMapping -CIPPMapping $Table -APIName $APIName -Request $Request -Extension 'Hudu'
+          Register-CIPPExtensionScheduledTasks
+        }
+        'Action1' {
+          $Result = Set-Action1OrgMapping -CIPPMapping $Table -APIName $APIName -Request $Request
           Register-CIPPExtensionScheduledTasks
         }
       }
