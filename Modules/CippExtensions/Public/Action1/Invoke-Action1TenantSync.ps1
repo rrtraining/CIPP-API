@@ -61,14 +61,21 @@ function Invoke-Action1TenantSync {
         
         # Get Action1 configuration from CIPP settings
         $Table = Get-CIPPTable -TableName Extensionsconfig
-        $Configuration = ((Get-AzDataTableEntity @Table).config | ConvertFrom-Json -ErrorAction Stop)
+        $Configuration = ((Get-CIPPAzDataTableEntity @Table).config | ConvertFrom-Json -ErrorAction Stop)
+        $Action1Config = $Configuration.Action1
         
-        $Action1Enabled = [bool]$Configuration.'Action1.Enabled'
-        $Action1ClientID = $Configuration.'Action1.ClientID'
-        $Action1ClientSecret = $Configuration.'Action1.APIKey'
+        $Action1Enabled = [bool]$Action1Config.Enabled
+        $Action1ClientID = $Action1Config.ClientID
         
         if (-not $Action1Enabled -or [string]::IsNullOrEmpty($Action1ClientID)) {
             throw "Action1 integration is not configured or enabled"
+        }
+        
+        # Get Action1 API key securely from Key Vault
+        $Action1ClientSecret = Get-ExtensionAPIKey -Extension 'Action1'
+        
+        if ([string]::IsNullOrEmpty($Action1ClientSecret)) {
+            throw "Failed to retrieve Action1 API key from Key Vault"
         }
         
         # Get Action1 token

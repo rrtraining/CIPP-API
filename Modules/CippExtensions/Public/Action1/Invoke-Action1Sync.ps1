@@ -19,7 +19,7 @@ function Invoke-Action1Sync {
         # Get tenants that have Action1 mapping configured
         $CIPPMapping = Get-CIPPTable -TableName CippMapping
         $Filter = "PartitionKey eq 'Action1Mapping'"
-        $TenantsToProcess = Get-AzDataTableEntity @CIPPMapping -Filter $Filter | Where-Object { $Null -ne $_.IntegrationId -and $_.IntegrationId -ne '' }
+        $TenantsToProcess = Get-CIPPAzDataTableEntity @CIPPMapping -Filter $Filter | Where-Object { $Null -ne $_.IntegrationId -and $_.IntegrationId -ne '' }
         
         # Create batch jobs for each mapped tenant
         $Batch = foreach ($Tenant in $TenantsToProcess) {

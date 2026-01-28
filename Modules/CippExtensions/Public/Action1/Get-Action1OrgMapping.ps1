@@ -37,13 +37,13 @@ function Get-Action1OrgMapping {
         
         # Get Action1 configuration from CIPP settings
         $Table = Get-CIPPTable -TableName Extensionsconfig
-        $Configuration = ((Get-AzDataTableEntity @Table).config | ConvertFrom-Json -ErrorAction Stop)
+        $Configuration = ((Get-CIPPAzDataTableEntity @Table).config | ConvertFrom-Json -ErrorAction Stop)
+        $Action1Config = $Configuration.Action1
         
         # Check if Action1 is enabled
-        $Action1Enabled = [bool]$Configuration.'Action1.Enabled'
-        $Action1ClientID = $Configuration.'Action1.ClientID'
-        $Action1ClientSecret = $Configuration.'Action1.APIKey'
-        $Action1OrgID = $Configuration.'Action1.OrgID'
+        $Action1Enabled = [bool]$Action1Config.Enabled
+        $Action1ClientID = $Action1Config.ClientID
+        $Action1OrgID = $Action1Config.OrgID
         
         if (-not $Action1Enabled -or [string]::IsNullOrEmpty($Action1ClientID)) {
             $Action1Orgs = @([PSCustomObject]@{ 
@@ -52,6 +52,13 @@ function Get-Action1OrgMapping {
             })
         } else {
             try {
+                # Get Action1 API key securely from Key Vault
+                $Action1ClientSecret = Get-ExtensionAPIKey -Extension 'Action1'
+                
+                if ([string]::IsNullOrEmpty($Action1ClientSecret)) {
+                    throw "Failed to retrieve Action1 API key from Key Vault"
+                }
+                
                 # Get Action1 token using credentials
                 $Token = Get-Action1Token -ClientID $Action1ClientID -ClientSecret $Action1ClientSecret
                 
