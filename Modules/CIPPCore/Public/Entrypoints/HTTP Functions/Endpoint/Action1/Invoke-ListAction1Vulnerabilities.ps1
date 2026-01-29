@@ -66,11 +66,14 @@ function Invoke-ListAction1Vulnerabilities {
         $Response = Get-Action1Vulnerabilities -OrgID $OrgID -Token $Token -Severity $Severity
         
         # Transform data to match CIPP table expectations
-        # Action1 API returns data in 'vulnerabilities' property
+        # Action1 API returns data in 'items' property (standard) or specific property names
         $Results = @()
         $VulnData = $null
         
-        if ($Response.vulnerabilities) {
+        if ($Response.items) {
+            $VulnData = $Response.items
+        }
+        elseif ($Response.vulnerabilities) {
             $VulnData = $Response.vulnerabilities
         }
         elseif ($Response -is [Array]) {

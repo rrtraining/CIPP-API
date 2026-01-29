@@ -78,11 +78,14 @@ function Invoke-ListAction1MissingUpdates {
         $Response = Get-Action1MissingUpdates @params
         
         # Transform data to match CIPP table expectations
-        # Action1 API returns data in 'updates' property
+        # Action1 API returns data in 'items' property (standard) or specific property names
         $Results = @()
         $UpdateData = $null
         
-        if ($Response.updates) {
+        if ($Response.items) {
+            $UpdateData = $Response.items
+        }
+        elseif ($Response.updates) {
             $UpdateData = $Response.updates
         }
         elseif ($Response -is [Array]) {

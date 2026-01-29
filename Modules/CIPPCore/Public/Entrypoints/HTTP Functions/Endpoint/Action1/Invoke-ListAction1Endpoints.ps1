@@ -66,11 +66,14 @@ function Invoke-ListAction1Endpoints {
         $Response = Get-Action1Endpoints -OrgID $OrgID -Token $Token -Status $Status
         
         # Transform data to match CIPP table expectations
-        # Action1 API returns data in 'endpoints' property
+        # Action1 API returns data in 'items' property (standard) or specific property names
         $Results = @()
         $EndpointData = $null
         
-        if ($Response.endpoints) {
+        if ($Response.items) {
+            $EndpointData = $Response.items
+        }
+        elseif ($Response.endpoints) {
             $EndpointData = $Response.endpoints
         }
         elseif ($Response -is [Array]) {
