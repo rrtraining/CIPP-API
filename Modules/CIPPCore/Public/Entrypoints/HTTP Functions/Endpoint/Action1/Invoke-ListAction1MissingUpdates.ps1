@@ -14,24 +14,24 @@ function Invoke-ListAction1MissingUpdates {
     if (-not $Severity) { $Severity = "all" }
     
     try {
-        # Get Action1 configuration from extension settings
-        $ExtensionConfig = Get-CIPPAzDataTableEntity @{
-            TableName    = 'ExtensionConfig'
-            PartitionKey = 'Action1'
-            RowKey       = 'Action1'
+        # Get Action1 configuration from CIPP extension settings
+        $Table = Get-CIPPTable -TableName Extensionsconfig
+        $Configuration = ((Get-CIPPAzDataTableEntity @Table).config | ConvertFrom-Json -ErrorAction Stop)
+        $Action1Config = $Configuration.Action1
+        
+        if (-not $Action1Config -or -not $Action1Config.Enabled) {
+            throw "Action1 integration not enabled. Please configure in CIPP Settings > Integrations."
         }
         
-        if (-not $ExtensionConfig -or -not $ExtensionConfig.ClientId) {
-            throw "Action1 integration not configured. Please configure in CIPP Settings > Integrations."
+        $Action1ClientID = $Action1Config.ClientID
+        
+        if ([string]::IsNullOrEmpty($Action1ClientID)) {
+            throw "Action1 Client ID not configured. Please configure in CIPP Settings > Integrations."
         }
         
         # Get tenant mapping to find the Action1 org for this tenant
-        $TenantMappings = Get-CIPPAzDataTableEntity @{
-            TableName    = 'ExtensionMappings'
-            PartitionKey = 'Action1'
-        }
-        
-        $Mapping = $TenantMappings | Where-Object { $_.RowKey -eq $TenantFilter }
+        $ExtensionMappings = Get-ExtensionMapping -Extension 'Action1'
+        $Mapping = $ExtensionMappings | Where-Object { $_.RowKey -eq $TenantFilter }
         
         if (-not $Mapping -or -not $Mapping.IntegrationId) {
             throw "No Action1 organization mapped to tenant $TenantFilter. Please configure mapping in Integrations > Action1."
@@ -39,8 +39,15 @@ function Invoke-ListAction1MissingUpdates {
         
         $OrgID = $Mapping.IntegrationId
         
+        # Get Action1 API key securely from Key Vault
+        $Action1ClientSecret = Get-ExtensionAPIKey -Extension 'Action1'
+        
+        if ([string]::IsNullOrEmpty($Action1ClientSecret)) {
+            throw "Failed to retrieve Action1 API key"
+        }
+        
         # Get Action1 token
-        $Token = Get-Action1Token -ClientId $ExtensionConfig.ClientId -ClientSecret $ExtensionConfig.ClientSecret
+        $Token = Get-Action1Token -ClientID $Action1ClientID -ClientSecret $Action1ClientSecret
         
         if (-not $Token) {
             throw "Failed to authenticate with Action1 API"
