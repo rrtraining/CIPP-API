@@ -63,42 +63,41 @@ function Invoke-ListAction1Endpoints {
         }
         
         # Get endpoints from Action1
-        $Endpoints = Get-Action1Endpoints -OrgID $OrgID -Token $Token -Status $Status
+        $Response = Get-Action1Endpoints -OrgID $OrgID -Token $Token -Status $Status
         
         # Transform data to match CIPP table expectations
+        # Action1 API returns data in 'endpoints' property
         $Results = @()
-        if ($Endpoints -and $Endpoints.items) {
-            $Results = $Endpoints.items | ForEach-Object {
-                [PSCustomObject]@{
-                    id                  = $_.id
-                    name                = $_.name
-                    hostname            = $_.hostname
-                    status              = $_.status
-                    platform            = $_.platform
-                    os_name             = $_.os_name
-                    os_version          = $_.os_version
-                    ip_address          = $_.ip_address
-                    last_seen           = $_.last_seen
-                    agent_version       = $_.agent_version
-                    missing_updates     = $_.missing_updates_count
-                    tenant              = $TenantFilter
-                }
-            }
+        $EndpointData = $null
+        
+        if ($Response.endpoints) {
+            $EndpointData = $Response.endpoints
         }
-        elseif ($Endpoints -is [Array]) {
-            $Results = $Endpoints | ForEach-Object {
+        elseif ($Response -is [Array]) {
+            $EndpointData = $Response
+        }
+        
+        if ($EndpointData) {
+            $Results = $EndpointData | ForEach-Object {
+                # Calculate total missing updates from critical + other
+                $missingCount = 0
+                if ($_.missing_updates) {
+                    $missingCount = [int]$_.missing_updates.critical + [int]$_.missing_updates.other
+                }
+                
                 [PSCustomObject]@{
                     id                  = $_.id
                     name                = $_.name
-                    hostname            = $_.hostname
+                    hostname            = $_.device_name
                     status              = $_.status
                     platform            = $_.platform
-                    os_name             = $_.os_name
-                    os_version          = $_.os_version
-                    ip_address          = $_.ip_address
+                    os_name             = $_.OS
+                    os_version          = $_.OS
+                    ip_address          = $_.address
                     last_seen           = $_.last_seen
                     agent_version       = $_.agent_version
-                    missing_updates     = $_.missing_updates_count
+                    missing_updates     = $missingCount
+                    user                = $_.user
                     tenant              = $TenantFilter
                 }
             }

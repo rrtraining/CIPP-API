@@ -75,44 +75,46 @@ function Invoke-ListAction1MissingUpdates {
         }
         
         # Get missing updates from Action1
-        $Updates = Get-Action1MissingUpdates @params
+        $Response = Get-Action1MissingUpdates @params
         
         # Transform data to match CIPP table expectations
+        # Action1 API returns data in 'updates' property
         $Results = @()
-        if ($Updates -and $Updates.items) {
-            $Results = $Updates.items | ForEach-Object {
-                [PSCustomObject]@{
-                    id                  = $_.id
-                    update_id           = $_.update_id
-                    title               = $_.title
-                    description         = $_.description
-                    severity            = $_.severity
-                    kb_article          = $_.kb_article
-                    release_date        = $_.release_date
-                    product             = $_.product
-                    classification      = $_.classification
-                    affected_endpoints  = $_.affected_endpoints_count
-                    endpoint_name       = $_.endpoint_name
-                    endpoint_id         = $_.endpoint_id
-                    tenant              = $TenantFilter
-                }
-            }
+        $UpdateData = $null
+        
+        if ($Response.updates) {
+            $UpdateData = $Response.updates
         }
-        elseif ($Updates -is [Array]) {
-            $Results = $Updates | ForEach-Object {
+        elseif ($Response -is [Array]) {
+            $UpdateData = $Response
+        }
+        
+        if ($UpdateData) {
+            $Results = $UpdateData | ForEach-Object {
+                # Get security severity from versions if available
+                $severity = "Unspecified"
+                $releaseDate = ""
+                $kbNumber = $_.kb_number
+                
+                if ($_.versions -and $_.versions.Count -gt 0) {
+                    $latestVersion = $_.versions[0]
+                    $severity = $latestVersion.security_severity
+                    $releaseDate = $latestVersion.release_date
+                }
+                
                 [PSCustomObject]@{
                     id                  = $_.id
-                    update_id           = $_.update_id
-                    title               = $_.title
+                    update_id           = $_.id
+                    title               = $_.name
                     description         = $_.description
-                    severity            = $_.severity
-                    kb_article          = $_.kb_article
-                    release_date        = $_.release_date
-                    product             = $_.product
+                    severity            = $severity
+                    kb_article          = $kbNumber
+                    release_date        = $releaseDate
+                    product             = $_.vendor
                     classification      = $_.classification
-                    affected_endpoints  = $_.affected_endpoints_count
-                    endpoint_name       = $_.endpoint_name
-                    endpoint_id         = $_.endpoint_id
+                    update_type         = $_.update_type
+                    update_source       = $_.update_source
+                    reboot_needed       = $_.reboot_needed
                     tenant              = $TenantFilter
                 }
             }

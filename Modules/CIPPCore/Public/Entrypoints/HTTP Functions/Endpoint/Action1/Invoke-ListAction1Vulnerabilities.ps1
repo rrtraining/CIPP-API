@@ -63,40 +63,40 @@ function Invoke-ListAction1Vulnerabilities {
         }
         
         # Get vulnerabilities from Action1
-        $Vulnerabilities = Get-Action1Vulnerabilities -OrgID $OrgID -Token $Token -Severity $Severity
+        $Response = Get-Action1Vulnerabilities -OrgID $OrgID -Token $Token -Severity $Severity
         
         # Transform data to match CIPP table expectations
+        # Action1 API returns data in 'vulnerabilities' property
         $Results = @()
-        if ($Vulnerabilities -and $Vulnerabilities.items) {
-            $Results = $Vulnerabilities.items | ForEach-Object {
-                [PSCustomObject]@{
-                    id                  = $_.id
-                    cve_id              = $_.cve_id
-                    title               = $_.title
-                    description         = $_.description
-                    severity            = $_.severity
-                    cvss_score          = $_.cvss_score
-                    affected_product    = $_.affected_product
-                    affected_endpoints  = $_.affected_endpoints_count
-                    published_date      = $_.published_date
-                    kb_article          = $_.kb_article
-                    tenant              = $TenantFilter
-                }
-            }
+        $VulnData = $null
+        
+        if ($Response.vulnerabilities) {
+            $VulnData = $Response.vulnerabilities
         }
-        elseif ($Vulnerabilities -is [Array]) {
-            $Results = $Vulnerabilities | ForEach-Object {
+        elseif ($Response -is [Array]) {
+            $VulnData = $Response
+        }
+        
+        if ($VulnData) {
+            $Results = $VulnData | ForEach-Object {
+                # Get first software product name
+                $affectedProduct = ""
+                if ($_.software -and $_.software.Count -gt 0) {
+                    $affectedProduct = $_.software[0].product_name
+                }
+                
                 [PSCustomObject]@{
-                    id                  = $_.id
+                    id                  = $_.cve_id
                     cve_id              = $_.cve_id
-                    title               = $_.title
-                    description         = $_.description
-                    severity            = $_.severity
+                    title               = $_.cve_id
+                    description         = "Affects: $affectedProduct"
+                    severity            = if ($_.cvss_score -ge 9) { "Critical" } elseif ($_.cvss_score -ge 7) { "High" } elseif ($_.cvss_score -ge 4) { "Medium" } else { "Low" }
                     cvss_score          = $_.cvss_score
-                    affected_product    = $_.affected_product
-                    affected_endpoints  = $_.affected_endpoints_count
+                    affected_product    = $affectedProduct
+                    affected_endpoints  = $_.endpoints_count
                     published_date      = $_.published_date
-                    kb_article          = $_.kb_article
+                    remediation_status  = $_.remediation_status
+                    cisa_kev            = $_.cisa_kev
                     tenant              = $TenantFilter
                 }
             }
