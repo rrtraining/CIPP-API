@@ -32,7 +32,7 @@ function Get-Action1MissingUpdates {
     )
     
     try {
-        $endpoint = "/organizations/$OrgID/missing-updates"
+        $endpoint = "/updates/$OrgID"
         $queryParams = @()
         
         if ($EndpointID) {

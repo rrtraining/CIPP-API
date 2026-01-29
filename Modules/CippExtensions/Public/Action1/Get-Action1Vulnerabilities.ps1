@@ -36,12 +36,12 @@ function Get-Action1Vulnerabilities {
     try {
         if ($CVEID) {
             # Get specific CVE details
-            $endpoint = "/organizations/$OrgID/vulnerabilities/$CVEID"
+            $endpoint = "/vulnerabilities/$OrgID/$CVEID"
             $result = Invoke-Action1Request -Endpoint $endpoint -Token $Token
         }
         else {
             # List all vulnerabilities
-            $endpoint = "/organizations/$OrgID/vulnerabilities"
+            $endpoint = "/vulnerabilities/$OrgID"
             $queryParams = @()
             
             if ($Severity -ne "all") {

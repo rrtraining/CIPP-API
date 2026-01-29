@@ -34,12 +34,12 @@ function Get-Action1Endpoints {
     try {
         if ($EndpointID) {
             # Get specific endpoint details
-            $endpoint = "/organizations/$OrgID/endpoints/$EndpointID"
+            $endpoint = "/endpoints/managed/$OrgID/$EndpointID/general"
             $result = Invoke-Action1Request -Endpoint $endpoint -Token $Token
         }
         else {
             # List all endpoints
-            $endpoint = "/organizations/$OrgID/endpoints"
+            $endpoint = "/endpoints/managed/$OrgID"
             $queryParams = @()
             
             if ($Status -ne "all") {
