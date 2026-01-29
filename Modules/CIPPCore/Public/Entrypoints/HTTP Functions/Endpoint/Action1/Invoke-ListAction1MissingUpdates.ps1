@@ -29,9 +29,19 @@ function Invoke-ListAction1MissingUpdates {
             throw "Action1 Client ID not configured. Please configure in CIPP Settings > Integrations."
         }
         
+        # Get tenant info to find the RowKey (customerId)
+        $Tenants = Get-Tenants -IncludeErrors
+        $Tenant = $Tenants | Where-Object { $_.defaultDomainName -eq $TenantFilter -or $_.customerId -eq $TenantFilter }
+        
+        if (-not $Tenant) {
+            throw "Tenant $TenantFilter not found in CIPP."
+        }
+        
+        $TenantRowKey = $Tenant.RowKey
+        
         # Get tenant mapping to find the Action1 org for this tenant
         $ExtensionMappings = Get-ExtensionMapping -Extension 'Action1'
-        $Mapping = $ExtensionMappings | Where-Object { $_.RowKey -eq $TenantFilter }
+        $Mapping = $ExtensionMappings | Where-Object { $_.RowKey -eq $TenantRowKey }
         
         if (-not $Mapping -or -not $Mapping.IntegrationId) {
             throw "No Action1 organization mapped to tenant $TenantFilter. Please configure mapping in Integrations > Action1."
